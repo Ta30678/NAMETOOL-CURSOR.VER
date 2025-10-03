@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETABS 梁自動編號工具 - 增強版</title>
+    
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    
+    <style>
+        /* 保持原有樣式，添加新功能按鈕 */
+        :root {
+            --theme-bg: #f1f5f9;
+            --theme-surface: #ffffff;
+            --theme-border: #e2e8f0;
+            --theme-shadow: rgba(0, 0, 0, 0.05);
+            --theme-text-primary: #1e293b;
+            --theme-text-secondary: #64748b;
+            --theme-accent: #f97316;
+            --theme-accent-hover: #ea580c;
+            --theme-success: #22c55e;
+            --theme-success-hover: #16a34a;
+            --theme-info: #3b82f6;
+            --theme-info-hover: #2563eb;
+        }
+
+        body {
+            font-family: "Inter", "Microsoft JhengHei", sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 26px 14px;
+            color: var(--theme-text-primary);
+            background-color: var(--theme-bg);
+        }
+
+        #container {
+            width: 90%;
+            max-width: none;
+            background: var(--theme-surface);
+            padding: 20px;
+            border-radius: 18px;
+            border: 1px solid var(--theme-border);
+            box-shadow: 0 10px 25px -5px var(--theme-shadow);
+        }
+
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--theme-text-primary);
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .control-area {
+            margin-bottom: 25px;
+            padding: 20px;
+            border-radius: 12px;
+            background: var(--theme-bg);
+            border: 1px solid var(--theme-border);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .export-section {
+            background: #f8fafc;
+            border: 1px solid var(--theme-border);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .export-section h3 {
+            margin: 0 0 15px 0;
+            color: var(--theme-text-primary);
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-process {
+            background-color: var(--theme-accent);
+        }
+
+        .btn-process:hover {
+            background-color: var(--theme-accent-hover);
+        }
+
+        .btn-export {
+            background-color: var(--theme-success);
+        }
+
+        .btn-export:hover {
+            background-color: var(--theme-success-hover);
+        }
+
+        .btn-autocad {
+            background-color: var(--theme-info);
+        }
+
+        .btn-autocad:hover {
+            background-color: var(--theme-info-hover);
+        }
+
+        .btn-export:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        #drawing-svg {
+            width: 100%;
+            height: 60vh;
+            border-radius: 8px;
+            background-color: #ffffff;
+            border: 1px solid var(--theme-border);
+            cursor: grab;
+        }
+
+        .beam-label {
+            fill: #1e293b;
+            font-weight: 500;
+            paint-order: stroke;
+            stroke: #ffffff;
+            stroke-linejoin: round;
+        }
+
+        .grid-lines line {
+            stroke: #475569;
+            stroke-width: 0.5px;
+            stroke-dasharray: 4 4;
+        }
+
+        .beam-line {
+            stroke: #d1d5db;
+            stroke-width: 1px;
+        }
+
+        .labeled-beam-line {
+            stroke: #3b82f6;
+            stroke-width: 1.5px;
+        }
+
+        .special-beam-line {
+            stroke: var(--theme-accent);
+            stroke-width: 1.5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>ETABS 梁自動編號工具 - 增強版</h1>
+
+        <div class="control-area">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="e2kFile">請選擇 ETABS .e2k 檔案:</label>
+                    <input type="file" id="e2kFile" accept=".e2k" />
+                </div>
+                <div class="control-group">
+                    <input type="checkbox" id="mirrorModeToggle" />
+                    <label for="mirrorModeToggle">啟用小梁鏡像對稱編號</label>
+                </div>
+                <button class="btn-process" onclick="processE2k()">開始編號</button>
+            </div>
+            
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="storySelector">顯示樓層:</label>
+                    <select id="storySelector" onchange="handleStoryChange()" disabled></select>
+
+                    <label for="beamTypeSelector">顯示類型:</label>
+                    <select id="beamTypeSelector" onchange="handleStoryChange()" disabled>
+                        <option value="all">顯示全部</option>
+                        <option value="main">大梁</option>
+                        <option value="secondary">小梁</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增：AutoCAD匯出區域 -->
+        <div class="export-section">
+            <h3>AutoCAD 匯出功能</h3>
+            <div class="export-buttons">
+                <button class="btn-export" id="exportExcelBtn" onclick="exportToExcel()" disabled>
+                    匯出成 Excel
+                </button>
+                <button class="btn-autocad" id="exportDXFBtn" onclick="exportToDXF()" disabled>
+                    匯出 DXF 檔案
+                </button>
+                <button class="btn-autocad" id="exportScriptBtn" onclick="exportAutoCADScript()" disabled>
+                    匯出 AutoCAD 腳本
+                </button>
+                <button class="btn-autocad" id="exportLispBtn" onclick="exportAutoLISP()" disabled>
+                    匯出 AutoLISP 腳本
+                </button>
+                <button class="btn-autocad" id="exportDataBtn" onclick="exportCoordinateData()" disabled>
+                    匯出座標資料
+                </button>
+            </div>
+        </div>
+
+        <div id="status"></div>
+        <div id="output">
+            <div id="drawing">
+                <h3>結構平面圖 (<span id="plan-story-name">所有樓層合併</span>)</h3>
+                <svg id="drawing-svg"></svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全域變數
+        let fullProcessedBeams = [];
+        let fullDrawableBeams = [];
+        let availableStories = [];
+        let gridData = {};
+        let storyOrderInfo = {};
+        const TOLERANCE = 0.1;
+
+        // 這裡包含您原有的所有函數...
+        // 為了簡潔，我只顯示新增的AutoCAD匯出功能
+
+        // DXF匯出功能
+        function exportToDXF() {
+            if (fullProcessedBeams.length === 0) {
+                alert("沒有可匯出的資料。");
+                return;
+            }
+
+            const dxfContent = generateDXFContent();
+            downloadFile(dxfContent, 'beam_labels.dxf', 'text/plain');
+        }
+
+        function generateDXFContent() {
+            let dxf = [];
+            
+            // DXF檔案標頭
+            dxf.push('0');
+            dxf.push('SECTION');
+            dxf.push('2');
+            dxf.push('HEADER');
+            dxf.push('9');
+            dxf.push('$ACADVER');
+            dxf.push('1');
+            dxf.push('AC1015');
+            dxf.push('0');
+            dxf.push('ENDSEC');
+            
+            // 圖層定義
+            dxf.push('0');
+            dxf.push('SECTION');
+            dxf.push('2');
+            dxf.push('TABLES');
+            
+            // 創建圖層
+            dxf.push('0');
+            dxf.push('LAYER');
+            dxf.push('2');
+            dxf.push('BEAM_MAIN');
+            dxf.push('70');
+            dxf.push('0');
+            dxf.push('62');
+            dxf.push('1');
+            dxf.push('6');
+            dxf.push('CONTINUOUS');
+            
+            dxf.push('0');
+            dxf.push('LAYER');
+            dxf.push('2');
+            dxf.push('BEAM_SECONDARY');
+            dxf.push('70');
+            dxf.push('0');
+            dxf.push('62');
+            dxf.push('3');
+            dxf.push('6');
+            dxf.push('CONTINUOUS');
+            
+            dxf.push('0');
+            dxf.push('LAYER');
+            dxf.push('2');
+            dxf.push('BEAM_SPECIAL');
+            dxf.push('70');
+            dxf.push('0');
+            dxf.push('62');
+            dxf.push('6');
+            dxf.push('6');
+            dxf.push('CONTINUOUS');
+            
+            dxf.push('0');
+            dxf.push('ENDSEC');
+            
+            // 實體
+            dxf.push('0');
+            dxf.push('SECTION');
+            dxf.push('2');
+            dxf.push('ENTITIES');
+            
+            // 添加梁標籤
+            fullProcessedBeams.forEach(beam => {
+                if (beam.j1 && beam.j2) {
+                    const x = (beam.j1.x + beam.j2.x) / 2;
+                    const y = (beam.j1.y + beam.j2.y) / 2;
+                    const label = beam.newLabel || beam.name;
+                    
+                    // 判斷圖層
+                    let layer = 'BEAM_MAIN';
+                    if (label.startsWith('b') || label.startsWith('fb')) {
+                        layer = 'BEAM_SECONDARY';
+                    } else if (label.startsWith('WB') || label.startsWith('FWB')) {
+                        layer = 'BEAM_SPECIAL';
+                    }
+                    
+                    // 判斷旋轉角度
+                    let rotation = 0;
+                    const isVertical = Math.abs(beam.j1.x - beam.j2.x) < TOLERANCE;
+                    if (isVertical) {
+                        rotation = Math.PI / 2;
+                    }
+                    
+                    // 添加文字
+                    dxf.push('0');
+                    dxf.push('TEXT');
+                    dxf.push('8');
+                    dxf.push(layer);
+                    dxf.push('10');
+                    dxf.push(x.toString());
+                    dxf.push('20');
+                    dxf.push(y.toString());
+                    dxf.push('30');
+                    dxf.push('0');
+                    dxf.push('40');
+                    dxf.push('2.5');
+                    dxf.push('1');
+                    dxf.push(label);
+                    dxf.push('50');
+                    dxf.push(rotation.toString());
+                }
+            });
+            
+            dxf.push('0');
+            dxf.push('ENDSEC');
+            dxf.push('0');
+            dxf.push('EOF');
+            
+            return dxf.join('\n');
+        }
+
+        // AutoCAD腳本匯出
+        function exportAutoCADScript() {
+            if (fullProcessedBeams.length === 0) {
+                alert("沒有可匯出的資料。");
+                return;
+            }
+
+            let script = [];
+            script.push('; AutoCAD腳本檔案 - 自動插入梁編號');
+            script.push('; 使用方法：在AutoCAD中執行 SCRIPT 命令，選擇此檔案');
+            script.push('');
+            script.push('; 設定文字樣式');
+            script.push('-STYLE');
+            script.push('BEAM_TEXT');
+            script.push('Arial');
+            script.push('2.5');
+            script.push('0.8');
+            script.push('0');
+            script.push('N');
+            script.push('N');
+            script.push('');
+            script.push('; 創建圖層');
+            script.push('-LAYER');
+            script.push('M');
+            script.push('BEAM_MAIN');
+            script.push('C');
+            script.push('1');
+            script.push('BEAM_MAIN');
+            script.push('');
+            script.push('-LAYER');
+            script.push('M');
+            script.push('BEAM_SECONDARY');
+            script.push('C');
+            script.push('3');
+            script.push('BEAM_SECONDARY');
+            script.push('');
+            script.push('-LAYER');
+            script.push('M');
+            script.push('BEAM_SPECIAL');
+            script.push('C');
+            script.push('6');
+            script.push('BEAM_SPECIAL');
+            script.push('');
+            script.push('; 插入梁編號');
+            
+            fullProcessedBeams.forEach(beam => {
+                if (beam.j1 && beam.j2) {
+                    const x = (beam.j1.x + beam.j2.x) / 2;
+                    const y = (beam.j1.y + beam.j2.y) / 2;
+                    const label = beam.newLabel || beam.name;
+                    
+                    let layer = 'BEAM_MAIN';
+                    if (label.startsWith('b') || label.startsWith('fb')) {
+                        layer = 'BEAM_SECONDARY';
+                    } else if (label.startsWith('WB') || label.startsWith('FWB')) {
+                        layer = 'BEAM_SPECIAL';
+                    }
+                    
+                    let rotation = 0;
+                    const isVertical = Math.abs(beam.j1.x - beam.j2.x) < TOLERANCE;
+                    if (isVertical) {
+                        rotation = 90;
+                    }
+                    
+                    script.push('-LAYER');
+                    script.push('S');
+                    script.push(layer);
+                    script.push('');
+                    script.push('TEXT');
+                    script.push(`${x},${y}`);
+                    script.push('2.5');
+                    script.push(rotation.toString());
+                    script.push(label);
+                    script.push('');
+                }
+            });
+            
+            script.push('ZOOM');
+            script.push('E');
+            
+            downloadFile(script.join('\n'), 'beam_labels.scr', 'text/plain');
+        }
+
+        // AutoLISP腳本匯出
+        function exportAutoLISP() {
+            if (fullProcessedBeams.length === 0) {
+                alert("沒有可匯出的資料。");
+                return;
+            }
+
+            let lisp = [];
+            lisp.push('; AutoLISP腳本 - 自動插入梁編號');
+            lisp.push('; 使用方法：在AutoCAD中載入此檔案，然後執行 (beam-label-insert)');
+            lisp.push('');
+            lisp.push('(defun beam-label-insert ()');
+            lisp.push('  (princ "\\n=== ETABS梁編號插入工具 ===")');
+            lisp.push('  (beam-setup-layers)');
+            lisp.push('  (beam-insert-labels)');
+            lisp.push('  (princ "\\n梁編號插入完成")');
+            lisp.push(')');
+            lisp.push('');
+            lisp.push('(defun beam-setup-layers ()');
+            lisp.push('  (command "LAYER" "M" "BEAM_MAIN" "C" "1" "BEAM_MAIN" "")');
+            lisp.push('  (command "LAYER" "M" "BEAM_SECONDARY" "C" "3" "BEAM_SECONDARY" "")');
+            lisp.push('  (command "LAYER" "M" "BEAM_SPECIAL" "C" "6" "BEAM_SPECIAL" "")');
+            lisp.push(')');
+            lisp.push('');
+            lisp.push('(defun beam-insert-labels ()');
+            
+            fullProcessedBeams.forEach(beam => {
+                if (beam.j1 && beam.j2) {
+                    const x = (beam.j1.x + beam.j2.x) / 2;
+                    const y = (beam.j1.y + beam.j2.y) / 2;
+                    const label = beam.newLabel || beam.name;
+                    
+                    let layer = 'BEAM_MAIN';
+                    if (label.startsWith('b') || label.startsWith('fb')) {
+                        layer = 'BEAM_SECONDARY';
+                    } else if (label.startsWith('WB') || label.startsWith('FWB')) {
+                        layer = 'BEAM_SPECIAL';
+                    }
+                    
+                    let rotation = 0;
+                    const isVertical = Math.abs(beam.j1.x - beam.j2.x) < TOLERANCE;
+                    if (isVertical) {
+                        rotation = 90;
+                    }
+                    
+                    lisp.push(`  (command "LAYER" "S" "${layer}" "")`);
+                    lisp.push(`  (command "TEXT" (list ${x} ${y} 0) 2.5 ${rotation} "${label}")`);
+                }
+            });
+            
+            lisp.push(')');
+            lisp.push('');
+            lisp.push('(princ "\\nETABS梁編號工具已載入！")');
+            lisp.push('(princ "\\n輸入 (beam-label-insert) 開始插入梁編號")');
+            
+            downloadFile(lisp.join('\n'), 'beam_labels.lsp', 'text/plain');
+        }
+
+        // 座標資料匯出
+        function exportCoordinateData() {
+            if (fullProcessedBeams.length === 0) {
+                alert("沒有可匯出的資料。");
+                return;
+            }
+
+            let csv = [];
+            csv.push('標籤,X座標,Y座標,旋轉角度,圖層,樓層');
+            
+            fullProcessedBeams.forEach(beam => {
+                if (beam.j1 && beam.j2) {
+                    const x = (beam.j1.x + beam.j2.x) / 2;
+                    const y = (beam.j1.y + beam.j2.y) / 2;
+                    const label = beam.newLabel || beam.name;
+                    
+                    let layer = 'BEAM_MAIN';
+                    if (label.startsWith('b') || label.startsWith('fb')) {
+                        layer = 'BEAM_SECONDARY';
+                    } else if (label.startsWith('WB') || label.startsWith('FWB')) {
+                        layer = 'BEAM_SPECIAL';
+                    }
+                    
+                    let rotation = 0;
+                    const isVertical = Math.abs(beam.j1.x - beam.j2.x) < TOLERANCE;
+                    if (isVertical) {
+                        rotation = 90;
+                    }
+                    
+                    csv.push(`${label},${x},${y},${rotation},${layer},${beam.story}`);
+                }
+            });
+            
+            downloadFile(csv.join('\n'), 'beam_coordinates.csv', 'text/csv');
+        }
+
+        // 檔案下載函數
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 這裡需要包含您原有的所有函數...
+        // 包括 processE2k, handleStoryChange, displayResults 等
+        
+        // 模擬原有的處理函數（實際使用時請替換為您的完整函數）
+        function processE2k() {
+            // 您的原有處理邏輯
+            console.log('處理E2K檔案...');
+            // 處理完成後啟用匯出按鈕
+            document.getElementById('exportExcelBtn').disabled = false;
+            document.getElementById('exportDXFBtn').disabled = false;
+            document.getElementById('exportScriptBtn').disabled = false;
+            document.getElementById('exportLispBtn').disabled = false;
+            document.getElementById('exportDataBtn').disabled = false;
+        }
+
+        function handleStoryChange() {
+            // 您的原有處理邏輯
+            console.log('處理樓層變更...');
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('ETABS梁編號工具 - 增強版已載入');
+        });
+    </script>
+</body>
+</html>

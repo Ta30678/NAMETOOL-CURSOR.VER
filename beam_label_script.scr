@@ -1,0 +1,97 @@
+; AutoCAD腳本檔案 - 自動插入梁編號
+; 使用方法：在AutoCAD中執行 SCRIPT 命令，選擇此檔案
+
+; 設定文字樣式
+-STYLE
+BEAM_TEXT
+Arial
+2.5
+0.8
+0
+N
+N
+
+; 創建圖層
+-LAYER
+M
+BEAM_MAIN
+C
+1
+BEAM_MAIN
+L
+CONTINUOUS
+BEAM_MAIN
+
+-LAYER
+M
+BEAM_SECONDARY
+C
+3
+BEAM_SECONDARY
+L
+CONTINUOUS
+BEAM_SECONDARY
+
+-LAYER
+M
+BEAM_SPECIAL
+C
+6
+BEAM_SPECIAL
+L
+CONTINUOUS
+BEAM_SPECIAL
+
+-LAYER
+M
+BEAM_LABELS
+C
+7
+BEAM_LABELS
+L
+CONTINUOUS
+BEAM_LABELS
+
+; 設定當前圖層
+-LAYER
+S
+BEAM_LABELS
+
+; 插入梁編號文字
+; 格式：TEXT x y height rotation "文字內容"
+; 這裡需要根據實際座標填入
+
+; 範例：插入一些測試標籤
+TEXT
+0,0
+2.5
+0
+B1-1
+
+TEXT
+10,0
+2.5
+0
+B1-2
+
+TEXT
+20,0
+2.5
+0
+G1-1
+
+TEXT
+0,10
+2.5
+90
+B2-1
+
+TEXT
+10,10
+2.5
+90
+B2-2
+
+; 完成
+ZOOM
+E
